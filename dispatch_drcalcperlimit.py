@@ -30,7 +30,7 @@ if __name__ == "__main__":
         for k in reversed(range (1, 10 + 1)):
             nEndDevices = 1000*k
             randomSeed = randomSeedBase + (k-1)*nRuns
-            outputFileNamePrefix = "output/drcalcper/LoRaWAN-drcalcper-{}-{}".format (drCalcPerLimit, nEndDevices) # note: relative to ns-3 root folder
+            outputFileNamePrefix = "simulations/output/drcalcper/LoRaWAN-drcalcper-{}-{}".format (drCalcPerLimit, nEndDevices) # note: relative to ns-3 root folder
 
             cli_command = "./waf --run=lorawan-example-tracing --command-template=\"%s --randomSeed={} --nEndDevices={} --nGateways={} --discRadius={} --totalTime={} --nRuns={} --drCalcMethodIndex={} --drCalcPerLimit={} "\
                 "--usPacketSize={} --usDataPeriod={} --usConfirmedData={} --dsDataGenerate={} --verbose={} --stdcout={} --tracePhyTransmissions={} --tracePhyStates={} --traceMacPackets={} --traceMacStates={} --outputFileNamePrefix={}\""\
