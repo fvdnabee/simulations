@@ -53,7 +53,7 @@ for csvfilename in args.csvfiles:
     number_of_delivered_transmissions = 0
     number_of_undelivered_transmissions = 0
     sim_drop_reasons = [] # simple list of drop reasons, e.g. [0, 0, 0, 1]
-    sim_drop_reasons_datarateindex = [] # list of dicts, e.g. [{0: [0, 1]}, {1: [0,1]] dict keys are drop reasons, dict values are lists of data rate indexes of the phy transmission that was dropped for drop reason=key
+    sim_drop_reasons_datarateindex = {} # dict of lists , e.g. {0: [0, 1], 1: [0,1]} dict keys are drop reasons, values are lists of data rate indexes of the phy transmission that was dropped for drop reason=key
     for key in list(phy_transmissions.keys()):
         tx = phy_transmissions[key]
         if len (tx['PhyTxBegin']) != 1:
@@ -101,7 +101,7 @@ for csvfilename in args.csvfiles:
                         # store drop reason over all nodes:
                         sim_drop_reasons.append(drop_reason)
                         # store data rate index for drop_reason
-                        data_rate_index = tx['PhyTxBegin'][0][2]
+                        data_rate_index = int(tx['PhyTxBegin'][0][2])
                         if drop_reason not in sim_drop_reasons_datarateindex:
                             sim_drop_reasons_datarateindex[drop_reason] = list()
                         sim_drop_reasons_datarateindex[drop_reason].append(data_rate_index)
@@ -144,18 +144,28 @@ for csvfilename in args.csvfiles:
         sim_settings['seed'] = int(p_seed.search (sim_settings_file_contents).groups()[0])
 
     # <usDataPeriod>,<nGateways>,<nEndDevices>,<seed>,<nodeId>,<tranmissionsDelivered>,<tranmissionsSent>,<PDR>
-    print ("Simulation PHY delivery ratio: {}/{} = {}%. PHY Undelivered = {}.".format(number_of_delivered_transmissions, len(phy_transmissions), number_of_delivered_transmissions/len(phy_transmissions)*100, number_of_undelivered_transmissions))
+    print ("\nSimulation PHY delivery ratio: {}/{} = {}%. PHY Undelivered = {}.".format(number_of_delivered_transmissions, len(phy_transmissions), number_of_delivered_transmissions/len(phy_transmissions)*100, number_of_undelivered_transmissions))
 
-    print ("Simulation PHY drop reasons: {} transmissions dropped. Reasons:".format(len(sim_drop_reasons)))
-    print ("count LORAWAN_RX_DROP_PHY_BUSY_RX (0x00) = {}".format(sim_drop_reasons.count(0)))
-    print ("count LORAWAN_RX_DROP_SINR_TOO_LOW = (0x01) = {}".format(sim_drop_reasons.count(1)))
-    print ("count LORAWAN_RX_DROP_NOT_IN_RX_STATE = (0x02) = {}".format(sim_drop_reasons.count(2)))
-    print ("count LORAWAN_RX_DROP_PACKET_DESTOYED (0x03) = {}".format(sim_drop_reasons.count(3)))
-    print ("count LORAWAN_RX_DROP_ABORTED (0x04) = {}".format(sim_drop_reasons.count(4)))
-    print ("count LORAWAN_RX_DROP_PACKET_ABORTED (0x05) = {}".format(sim_drop_reasons.count(5)))
+    print ("\nSimulation PHY drop reasons: {} transmissions dropped. Reasons:".format(len(sim_drop_reasons)))
+    print ("0x00 (LORAWAN_RX_DROP_PHY_BUSY_RX) = {}".format(sim_drop_reasons.count(0)))
+    print ("0x01 (LORAWAN_RX_DROP_SINR_TOO_LOW) = {}".format(sim_drop_reasons.count(1)))
+    print ("0x02 (LORAWAN_RX_DROP_NOT_IN_RX_STATE) = {}".format(sim_drop_reasons.count(2)))
+    print ("0x03 (LORAWAN_RX_DROP_PACKET_DESTOYED) = {}".format(sim_drop_reasons.count(3)))
+    print ("0x04 (LORAWAN_RX_DROP_ABORTED) = {}".format(sim_drop_reasons.count(4)))
+    print ("0x05 (LORAWAN_RX_DROP_PACKET_ABORTED) = {}".format(sim_drop_reasons.count(5)))
 
-    print (sim_drop_reasons_datarateindex)
-    print ("Written output to {}".format(args.output))
+    # For every drop reason, print the amount of times a transmission with a
+    # specific data rate index was dropped for that drop reason
+    print("\nNumber of dropped PHY transmissions at a specific data rate index for every drop reason:")
+    print("Drop reason\tDR:drop_count")
+    for drop_reason in sim_drop_reasons_datarateindex:
+        s = "0x0{} ".format(drop_reason)
+        for data_rate_index in range(6):
+            count = sim_drop_reasons_datarateindex[drop_reason].count(data_rate_index)
+            s = s + "\t{}:{}".format(data_rate_index, count)
+        print(s)
+
+    print ("Writing/appending output to {}".format(args.output))
     with open(args.output, 'a') as output_file: # append to output file
         for k in nodes:
             if nodes[k]['TransmissionsSent'] > 0:
@@ -164,3 +174,4 @@ for csvfilename in args.csvfiles:
             else:
                 # print ("{},{},{},{}".format(k, 0, 0, 1))
                 pass
+    print ("------------------------------------------------------------------")
