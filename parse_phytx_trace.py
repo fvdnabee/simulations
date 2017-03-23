@@ -1,17 +1,16 @@
 #!/usr/bin/python3
-# Parse ns-3 lorawan packet trace CSV output files
+# Parse ns-3 lorawan PHY transmissions trace CSV output files
 import csv
 import argparse
 import re
-import json
 
-parser = argparse.ArgumentParser(description='Process ns-3 lorawan packet trace CSV output file.')
+parser = argparse.ArgumentParser(description='Process ns-3 lorawan PHY transmissions CSV output file.')
 parser.add_argument('csvfiles', nargs='*', help='The CSV files to be parsed')
-parser.add_argument('--output', default="parse-packet-trace.csv", help='The output CSV file')
+parser.add_argument('--output', default="parse_phytx_trace.csv", help='The output CSV file')
 
 args = parser.parse_args()
 for csvfilename in args.csvfiles:
-    print("\nParsing file {}".format(csvfilename))
+    print("\nParsing phy tx csv file {}".format(csvfilename))
     nodes = {}
     app_packets = {}
     phy_transmissions = {}
