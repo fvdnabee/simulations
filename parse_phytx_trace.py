@@ -213,7 +213,7 @@ for csvfilename in args.csvfiles:
     if not os.path.exists(args.outputsimulation):
         write_header = True
     with open(args.outputsimulation, 'a') as output_file: # append to output file
-        outputFormat = "<nGateways>,<nEndDevices>,<totalTime>,<drCalcMethod>,<drCalcMethodMisc>,<seed>,<usDataPeriod>,<delivered>,<sent>,<PDR>"\
+        outputFormat = "<nGateways>,<nEndDevices>,<totalTime>,<drCalcMethod>,<drCalcMethodMisc>,<seed>,<usDataPeriod>,<delivered>,<sent>,<PDR>,"\
                        "<deliveredDR0>,<sentDR0>,<PDRDR0>,<deliveredDR1>,<sentDR1>,<PDRDR1>,<deliveredDR2>,<sentDR2>,<PDRDR2>,"\
                        "<deliveredDR3>,<sentDR3>,<PDRDR3>,<deliveredDR4>,<sentDR4>,<PDRDR4>,<deliveredDR5>,<sentDR5>,<PDRDR5>\n"
         if write_header:
