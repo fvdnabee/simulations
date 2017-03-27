@@ -29,10 +29,10 @@ if __name__ == "__main__":
 
     # PER Data Rate Index calculation:
     drCalcMethodIndex = 0
-    drCalcPerLimitValues = [0.90, 0.75, 0.5, 0.25, 0.1, 0.05, 0.025, 0.01, 0.0075, 0.005, 0.0025, 0.001]
+    drCalcPerLimitValues = [0.90, 0.75, 0.5, 0.25, 0.1, 0.075, 0.05, 0.025, 0.01, 0.0075, 0.005, 0.0025, 0.001]
     for drCalcPerLimit in drCalcPerLimitValues:
-        for k in [1, 5, 10]:
-            nEndDevices = 1000*k # Run nRuns for 1000*k end devices
+        for k in [1, 5, 10, 50, 100]:
+            nEndDevices = 100*k # Run nRuns for 100*k end devices
             randomSeed = randomSeedBase + (k-1)*nRuns
             outputFileNamePrefix = "simulations/output/drcalc/LoRaWAN-drcalc-{}-{}-{}".format (drCalcMethodIndex, drCalcPerLimit, nEndDevices) # note: relative to ns-3 root folder
 
@@ -44,8 +44,8 @@ if __name__ == "__main__":
 
     # random Data rate calculation:
     drCalcMethodIndex = 1
-    for k in [1, 5, 10]:
-        nEndDevices = 1000*k # Run nRuns for 1000*k end devices
+    for k in [1, 5, 10, 50, 100]:
+        nEndDevices = 100*k # Run nRuns for 100*k end devices
         randomSeed = randomSeedBase + (k-1)*nRuns
         outputFileNamePrefix = "simulations/output/drcalc/LoRaWAN-drcalc-{}-{}".format (drCalcMethodIndex, nEndDevices) # note: relative to ns-3 root folder
 
@@ -59,8 +59,8 @@ if __name__ == "__main__":
     drCalcMethodIndex = 2
     drCalcFixedDRIndexValues = [0, 1, 2, 3, 4, 5]
     for drCalcFixedDRIndex in drCalcFixedDRIndexValues:
-        for k in [1, 5, 10]:
-            nEndDevices = 1000*k # Run nRuns for 1000*k end devices
+        for k in [1, 5, 10, 50, 100]:
+            nEndDevices = 100*k # Run nRuns for 100*k end devices
             randomSeed = randomSeedBase + (k-1)*nRuns
             outputFileNamePrefix = "simulations/output/drcalc/LoRaWAN-drcalc-{}-{}-{}".format (drCalcMethodIndex, drCalcFixedDRIndex, nEndDevices) # note: relative to ns-3 root folder
 

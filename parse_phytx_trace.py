@@ -162,8 +162,9 @@ for csvfilename in args.csvfiles:
     print ("\nDelivery/drop numbers per data rate index:")
     print("{:<5}{:>15}{:>15}{:>15}".format("DR", "Delivered","Undelivered","%"))
     for data_rate_index in data_rate_stats:
-        fraction = 100*data_rate_stats[data_rate_index][0] / ( data_rate_stats[data_rate_index][0] + data_rate_stats[data_rate_index][1])
-        print("{:<5}{:>15}{:>15}{:>15.2f}".format(data_rate_index, data_rate_stats[data_rate_index][0], data_rate_stats[data_rate_index][1], fraction))
+        if (data_rate_stats[data_rate_index][0] + data_rate_stats[data_rate_index][1] > 0):
+            fraction = 100*data_rate_stats[data_rate_index][0] / ( data_rate_stats[data_rate_index][0] + data_rate_stats[data_rate_index][1])
+            print("{:<5}{:>15}{:>15}{:>15.2f}".format(data_rate_index, data_rate_stats[data_rate_index][0], data_rate_stats[data_rate_index][1], fraction))
 
     # For every drop reason, print the amount of times a transmission with a
     # specific data rate index was dropped for that drop reason
@@ -203,7 +204,7 @@ for csvfilename in args.csvfiles:
         if sim_settings['drCalcMethod'] == 0:
             p_drcalcperlimit = re.compile('PER limit = (\d+\.\d+)')
             sim_settings['drCalcMethodMisc'] = float(p_drcalcperlimit.search (sim_settings_file_contents).groups()[0])
-        if sim_settings['drCalcMethod'] == 1:
+        if sim_settings['drCalcMethod'] == 2:
             p_drcalcfixeddr = re.compile('Fixed Data Rate Index = ([0-9]+)')
             sim_settings['drCalcMethodMisc'] = int(p_drcalcfixeddr.search (sim_settings_file_contents).groups()[0])
 
@@ -224,7 +225,7 @@ for csvfilename in args.csvfiles:
             dr_delivered = data_rate_stats[data_rate_index][0]
             dr_undelivered = data_rate_stats[data_rate_index][1]
             dr_tx = dr_delivered + dr_undelivered
-            dr_pdr = dr_delivered/dr_tx
+            dr_pdr = dr_delivered/dr_tx if dr_tx > 0 else 0
             output_line_dr_pdrs = output_line_dr_pdrs + "{},{},{:1.4f},".format(dr_delivered, dr_tx, dr_pdr)
         output_line_dr_pdrs = output_line_dr_pdrs[:-1] # remove trailing comma
 
