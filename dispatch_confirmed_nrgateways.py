@@ -38,7 +38,7 @@ if __name__ == "__main__":
                 totalTime = 100 * usDataPeriod # send 100 packets on average per node
                 nEndDevices = 100*k # Run nRuns for 100*k end devices
                 randomSeed = randomSeedBase + (k-1)*nRuns
-                outputFileNamePrefix = "simulations/output/confirmed/LoRaWAN-confirmed-{}-{}".format (usDataPeriod, nEndDevices) # note: relative to ns-3 root folder
+                outputFileNamePrefix = "simulations/output/confirmed-gateways/LoRaWAN-confirmed-{}-{}-{}".format (usDataPeriod, nGateways, nEndDevices) # note: relative to ns-3 root folder
 
                 cli_command = "./waf --run=lorawan-example-tracing --command-template=\"%s --randomSeed={} --nEndDevices={} --nGateways={} --discRadius={} --totalTime={} --nRuns={} --drCalcMethodIndex={} --drCalcPerLimit={} "\
                     "--usPacketSize={} --usDataPeriod={} --usConfirmedData={} --dsDataGenerate={} --verbose={} --stdcout={} --tracePhyTransmissions={} --tracePhyStates={} --traceMacPackets={} --traceMacStates={} --traceMisc={} --outputFileNamePrefix={}\""\
