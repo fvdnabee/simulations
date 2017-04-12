@@ -18,6 +18,7 @@ parser.add_argument('--output-file-enddevices', dest='outputfileenddevice', defa
 args = parser.parse_args()
 for csvfilename in args.csvfiles:
     print("Parsing mac packets csv file {}".format(csvfilename))
+    last_timestamp = -1
     nodes = {}
     mac_packets = {}
     data_rate_stats = {0: (0,0), 1: (0,0), 2: (0,0), 3: (0,0), 4: (0,0), 5: (0,0)} # key=data rate index, value = (delivered,notdelivered)
@@ -31,7 +32,9 @@ for csvfilename in args.csvfiles:
             trace_source = row[5]
             mac_packets_key = row[6] # packet in hex
             if mac_packets_key not in mac_packets:
-                mac_packets[mac_packets_key] = {'MacTx': [], 'MacTxOk': [], 'MacTxDrop': [], 'MacRx': [], 'MacRxDrop': [], 'MacSentPkt': [], 'MacSentPktMisc': []}
+                packet_timestamp = float(row[0])
+                last_timestamp = packet_timestamp
+                mac_packets[mac_packets_key] = {'Timestamp': packet_timestamp, 'MacTx': [], 'MacTxOk': [], 'MacTxDrop': [], 'MacRx': [], 'MacRxDrop': [], 'MacSentPkt': [], 'MacSentPktMisc': []}
             mac_packets[mac_packets_key][trace_source].append(node_id)
 
             if node_id not in nodes:
@@ -50,13 +53,12 @@ for csvfilename in args.csvfiles:
     #   -> Look at MacRx
     upstream_stats = {'nrPackets': 0, 'nrSent': 0, 'nrReceived': 0, 'nrDelivered': 0, 'nrUndelivered': 0, 'nrMacSentPktTries': 0}
     upstream_stats_sent = [0, 0, 0, 0, 0]
-    upstream_stats_received = [0, 0, 0, 0, 0]
+    upstream_stats_received = [0] * 20
     upstream_stats_senttries = [0, 0, 0, 0, 0]
     downstream_stats = {'nrPackets': 0, 'nrSent': 0, 'nrReceived': 0, 'nrDelivered': 0, 'nrUndelivered': 0, 'nrMacSentPktTries': 0}
     downstream_stats_sent = [0, 0, 0, 0, 0]
     downstream_stats_received = [0, 0, 0, 0, 0]
     downstream_stats_senttries = [0, 0, 0, 0, 0]
-    packet_counter=0
     us_packets_sent_vs_received = [[0],[0,0],[0,0,0],[0,0,0,0],[0,0,0,0,0]] # e.g. first index is number of times sent, second index is number of times received
     ds_packets_sent_vs_received = [[0],[0,0],[0,0,0],[0,0,0,0],[0,0,0,0,0]]
     number_of_us_sent_packets_that_were_not_received = 0  # when a packet has been sent 3 times but was never received, increment this counter by 3
@@ -68,8 +70,8 @@ for csvfilename in args.csvfiles:
              print("key={}: ERROR SKIPPING this MAC packet as there is more than one transmitter in MacTx for packet = {}".format(key, packet))
              continue
         nr_of_receivers = len(set(packet['MacRx']))
-        if nr_of_receivers != 0 and nr_of_receivers != 1:
-             print("key={}: ERROR SKIPPING this MAC packet as the number of receivers in MacRx is not equal to 0 or 1 for packet = {}".format(key, packet))
+        if nr_of_receivers < 0 or nr_of_receivers > 4:
+             print("key={}: ERROR SKIPPING this MAC packet as the number of receivers in MacRx is not equal to 0, 1, 2 or 4 for packet = {}".format(key, packet))
              continue
 
         nr_sent = len(packet['MacTx'])
@@ -81,20 +83,22 @@ for csvfilename in args.csvfiles:
         nr_sent_tries = 0
         if len(packet['MacTxOk']) == 1:
             delivered = True
-            nr_sent_tries = packet['MacSentPktMisc'][0][1]
-            if nr_sent != nr_sent_tries:
-                print("nr_sent == {} and nr_sent_tries = {}, packet = {}".format(nr_sent, nr_sent_tries, packet))
-            assert nr_sent == nr_sent_tries
+            if len(packet['MacSentPktMisc']) > 0:
+                nr_sent_tries = packet['MacSentPktMisc'][0][1]
+                if nr_sent != nr_sent_tries:
+                    print("nr_sent == {} and nr_sent_tries = {}, packet = {}".format(nr_sent, nr_sent_tries, packet))
+                assert nr_sent == nr_sent_tries
+            else:
+                print ("WARNING skipping packet because packet['MacSentPktMisc'] is empty for packet = {}".format(packet))
+                continue
         elif len(packet['MacTxDrop']) == 1:
             delivered = False
         else:
             # This should only happen at the end of trace:
-            fraction = packet_counter/len(mac_packets)
+            fraction = packet['Timestamp']/last_timestamp
             if fraction < 0.99: # only print if we are not near the end of the mac packet trace
-                print("key={}: Unexpected case, skipping this packet. {}/{}. packet = {}".format(key,packet_counter, len(mac_packets), packet))
+                print("key={}: Unexpected case, skipping this packet. {}/{}. packet = {}".format(key, packet['Timestamp'], last_timestamp, packet))
             continue
-
-        packet_counter+=1
 
         # update stats dictionaries
         tx_node_id = packet['MacTx'][0]
@@ -114,7 +118,7 @@ for csvfilename in args.csvfiles:
             if delivered:
                 upstream_stats_senttries[nr_sent_tries] += 1
 
-            us_packets_sent_vs_received[nr_sent][nr_received] += 1
+            # us_packets_sent_vs_received[nr_sent][nr_received] += 1
             # say a packet was sent 4 times, but only received 2 times. this means two sent packets were lost
             if nr_sent != nr_received:
                 number_of_us_sent_packets_that_were_not_received += nr_sent-nr_received
