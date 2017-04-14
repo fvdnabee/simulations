@@ -4,6 +4,7 @@ import csv
 import argparse
 import re
 import os.path
+from collections import Counter
 
 parser = argparse.ArgumentParser(description='Process ns-3 lorawan MAC packets CSV output file.')
 parser.add_argument('csvfiles', nargs='+', help='The CSV files to be parsed')
@@ -33,8 +34,9 @@ for csvfilename in args.csvfiles:
             mac_packets_key = row[6] # packet in hex
             if mac_packets_key not in mac_packets:
                 packet_timestamp = float(row[0])
+                phy_index = int(row[4])
                 last_timestamp = packet_timestamp
-                mac_packets[mac_packets_key] = {'Timestamp': packet_timestamp, 'MacTx': [], 'MacTxOk': [], 'MacTxDrop': [], 'MacRx': [], 'MacRxDrop': [], 'MacSentPkt': [], 'MacSentPktMisc': []}
+                mac_packets[mac_packets_key] = {'Timestamp': packet_timestamp, 'PhyIndex': phy_index, 'MacTx': [], 'MacTxOk': [], 'MacTxDrop': [], 'MacRx': [], 'MacRxDrop': [], 'MacSentPkt': [], 'MacSentPktMisc': []}
             mac_packets[mac_packets_key][trace_source].append(node_id)
 
             if node_id not in nodes:
@@ -59,10 +61,15 @@ for csvfilename in args.csvfiles:
     downstream_stats_sent = [0, 0, 0, 0, 0]
     downstream_stats_received = [0, 0, 0, 0, 0]
     downstream_stats_senttries = [0, 0, 0, 0, 0]
-    us_packets_sent_vs_received = [[0],[0,0],[0,0,0],[0,0,0,0],[0,0,0,0,0]] # e.g. first index is number of times sent, second index is number of times received
+    # us_packets_sent_vs_received = [[0],[0,0],[0,0,0],[0,0,0,0],[0,0,0,0,0]] # e.g. first index is number of times sent, second index is number of times received
+    us_packets_sent_vs_received = [[0,0,0,0,0]*4,[0,0,0,0,0]*4,[0,0,0,0,0]*4,[0,0,0,0,0]*4,[0,0,0,0,0]*4] # e.g. first index is number of times sent, second index is number of times received
     ds_packets_sent_vs_received = [[0],[0,0],[0,0,0],[0,0,0,0],[0,0,0,0,0]]
     number_of_us_sent_packets_that_were_not_received = 0  # when a packet has been sent 3 times but was never received, increment this counter by 3
     number_of_ds_sent_packets_that_were_not_received = 0
+    ds_phy_indexes = []
+    nr_ds_tx_received_rw1 = 0
+    nr_ds_tx_received_rw2 = 0
+    nr_ds_tx_not_received = 0
     for key in list(mac_packets.keys()):
         packet = mac_packets[key]
         nr_of_transmitters = len(set(packet['MacTx']))
@@ -73,6 +80,10 @@ for csvfilename in args.csvfiles:
         if nr_of_receivers < 0 or nr_of_receivers > 4:
              print("key={}: ERROR SKIPPING this MAC packet as the number of receivers in MacRx is not equal to 0, 1, 2 or 4 for packet = {}".format(key, packet))
              continue
+
+        tx_phy_index = packet['PhyIndex']
+        tx_node_id = packet['MacTx'][0]
+        tx_node_devicetype = nodes[tx_node_id]['DeviceType']
 
         nr_sent = len(packet['MacTx'])
         nr_received = len(packet['MacRx'])
@@ -100,10 +111,21 @@ for csvfilename in args.csvfiles:
                 print("key={}: Unexpected case, skipping this packet. {}/{}. packet = {}".format(key, packet['Timestamp'], last_timestamp, packet))
             continue
 
+        # For unconfirmed downstream transmissions check whether the transmission was received in RW1/RW2/not received
+        # For downstream transmissions, assume unconfirmed messages. Therefor Mac will always generate MacTxOk; so instead check MacRx to see if the unconfirmed transmissions was actually received
+        if tx_node_devicetype == 0:
+            ds_tx_received = len(packet['MacRx']) == 1
+            if ds_tx_received:
+                ds_tx_received_in_rw2 = tx_phy_index == 49
+                if ds_tx_received_in_rw2:
+                    nr_ds_tx_received_rw2 += 1
+                else:
+                    nr_ds_tx_received_rw1 += 1
+            else:
+                nr_ds_tx_not_received += 1
+
         # update stats dictionaries
-        tx_node_id = packet['MacTx'][0]
-        tx_node_devicetype = nodes[tx_node_id]['DeviceType']
-        if nodes[tx_node_id]['DeviceType'] == 1: # upstream packet
+        if tx_node_devicetype == 1: # upstream packet
             upstream_stats['nrPackets'] += 1
             upstream_stats['nrSent'] += nr_sent
             upstream_stats['nrReceived'] += nr_received
@@ -118,11 +140,11 @@ for csvfilename in args.csvfiles:
             if delivered:
                 upstream_stats_senttries[nr_sent_tries] += 1
 
-            # us_packets_sent_vs_received[nr_sent][nr_received] += 1
+            us_packets_sent_vs_received[nr_sent][nr_received] += 1
             # say a packet was sent 4 times, but only received 2 times. this means two sent packets were lost
             if nr_sent != nr_received:
                 number_of_us_sent_packets_that_were_not_received += nr_sent-nr_received
-        elif nodes[tx_node_devicetype]['DeviceType'] == 0: # downstream packet
+        elif tx_node_devicetype == 0: # downstream packet
             downstream_stats['nrPackets'] += 1
             downstream_stats['nrSent'] += nr_sent
             downstream_stats['nrReceived'] += nr_received
@@ -139,6 +161,8 @@ for csvfilename in args.csvfiles:
 
             if nr_sent != nr_received:
                 number_of_ds_sent_packets_that_were_not_received += nr_sent-nr_received
+
+            ds_phy_indexes.append(tx_phy_index)
         else:
             print("Fatal error unknown device type")
             exit()
@@ -153,45 +177,15 @@ for csvfilename in args.csvfiles:
         else:
             nodes[tx_node_id]['PacketsNotDelivered'] += 1
 
-
-    # Generate output:
-    print("\nUpstream stats: {}".format(upstream_stats))
-    print("Number of times a MAC event occured per US packet:")
-    print("{:<26}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}".format("Traffic | Number of times:", 0, 1, 2, 3, 4, "Sum", "W sum"))
-    print("{:<26}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}".format("US sent", upstream_stats_sent[0], upstream_stats_sent[1], upstream_stats_sent[2], upstream_stats_sent[3], upstream_stats_sent[4],
-        upstream_stats_sent[0] + upstream_stats_sent[1] + upstream_stats_sent[2] + upstream_stats_sent[3] + upstream_stats_sent[4],
-        0*upstream_stats_sent[0] + 1*upstream_stats_sent[1] + 2*upstream_stats_sent[2] + 3*upstream_stats_sent[3] + 4*upstream_stats_sent[4]))
-    print("{:<26}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}".format("US received", upstream_stats_received[0], upstream_stats_received[1], upstream_stats_received[2], upstream_stats_received[3], upstream_stats_received[4],
-        upstream_stats_received[0] + upstream_stats_received[1] + upstream_stats_received[2] + upstream_stats_received[3] + upstream_stats_received[4],
-        0*upstream_stats_received[0] + 1*upstream_stats_received[1] + 2*upstream_stats_received[2] + 3*upstream_stats_received[3] + 4*upstream_stats_received[4]))
-    print("{:<26}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}".format("US senttries", upstream_stats_senttries[0], upstream_stats_senttries[1], upstream_stats_senttries[2], upstream_stats_senttries[3], upstream_stats_senttries[4],
-        upstream_stats_senttries[0] + upstream_stats_senttries[1] + upstream_stats_senttries[2] + upstream_stats_senttries[3] + upstream_stats_senttries[4],
-        0*upstream_stats_senttries[0] + 1*upstream_stats_senttries[1] + 2*upstream_stats_senttries[2] + 3*upstream_stats_senttries[3] + 4*upstream_stats_senttries[4]))
-
-    print("Number of times a US packet was received vs number of times it was sent:")
-    print("{:<20}{:>10}{:>10}{:>10}{:>10}{:>10}{:>20}".format("#sent | #received", 0, 1, 2, 3, 4, "Total not received"))
-    print("{:<20}{:>10}{:>10}{:>10}{:>10}{:>10}{:>20}".format("1",us_packets_sent_vs_received[1][0], us_packets_sent_vs_received[1][1],"","","",
-        1*us_packets_sent_vs_received[1][0]))
-    print("{:<20}{:>10}{:>10}{:>10}{:>10}{:>10}{:>20}".format("2",us_packets_sent_vs_received[2][0], us_packets_sent_vs_received[2][1], us_packets_sent_vs_received[2][2],"","",
-        2*us_packets_sent_vs_received[2][0] + 1*us_packets_sent_vs_received[2][1]))
-    print("{:<20}{:>10}{:>10}{:>10}{:>10}{:>10}{:>20}".format("3",us_packets_sent_vs_received[3][0], us_packets_sent_vs_received[3][1], us_packets_sent_vs_received[3][2], us_packets_sent_vs_received[3][3],"",
-        3*us_packets_sent_vs_received[3][0] + 2*us_packets_sent_vs_received[3][1] + 1*us_packets_sent_vs_received[3][2]))
-    print("{:<20}{:>10}{:>10}{:>10}{:>10}{:>10}{:>20}".format("4",us_packets_sent_vs_received[4][0], us_packets_sent_vs_received[4][1], us_packets_sent_vs_received[4][2], us_packets_sent_vs_received[4][3], us_packets_sent_vs_received[4][4],
-        4*us_packets_sent_vs_received[4][0] + 3*us_packets_sent_vs_received[4][1] + 2*us_packets_sent_vs_received[4][2] + 1*us_packets_sent_vs_received[4][3]))
-    print("number_of_us_sent_packets_that_were_not_received = {}".format(number_of_us_sent_packets_that_were_not_received))
-
-    print("\nDS stats: {}".format(downstream_stats))
-    print("{:<25}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}".format("Traffic | number of times:", 0, 1, 2, 3, 4, "Sum", "W sum"))
-    print("{:<26}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}".format("DS sent", downstream_stats_sent[0], downstream_stats_sent[1], downstream_stats_sent[2], downstream_stats_sent[3], downstream_stats_sent[4],
-        downstream_stats_sent[0] + downstream_stats_sent[1] + downstream_stats_sent[2] + downstream_stats_sent[3] + downstream_stats_sent[4],
-        0*downstream_stats_sent[0] + 1*downstream_stats_sent[1] + 2*downstream_stats_sent[2] + 3*downstream_stats_sent[3] + 4*downstream_stats_sent[4]))
-    print("{:<26}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}".format("DS received", downstream_stats_received[0], downstream_stats_received[1], downstream_stats_received[2], downstream_stats_received[3], downstream_stats_received[4],
-        downstream_stats_received[0] + downstream_stats_received[1] + downstream_stats_received[2] + downstream_stats_received[3] + downstream_stats_received[4],
-        0*downstream_stats_received[0] + 1*downstream_stats_received[1] + 2*downstream_stats_received[2] + 3*downstream_stats_received[3] + 4*downstream_stats_received[4]))
-    print("{:<26}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}".format("DS senttries", downstream_stats_senttries[0], downstream_stats_senttries[1], downstream_stats_senttries[2], downstream_stats_senttries[3], downstream_stats_senttries[4],
-        downstream_stats_senttries[0] + downstream_stats_senttries[1] + downstream_stats_senttries[2] + downstream_stats_senttries[3] + downstream_stats_senttries[4],
-        0*downstream_stats_senttries[0] + 1*downstream_stats_senttries[1] + 2*downstream_stats_senttries[2] + 3*downstream_stats_senttries[3] + 4*downstream_stats_senttries[4]))
-    print("number_of_ds_sent_packets_that_were_not_received = {}".format(number_of_ds_sent_packets_that_were_not_received))
+    # parse trace misc csv file:
+    trace_misc_file_name = csvfilename.replace("trace-mac-packets.csv", "trace-misc.csv")
+    trace_misc = {"nrRW1Missed": -1,"nrRW2Missed": -1}
+    with open(trace_misc_file_name, newline='') as csvfile:
+        linereader = csv.reader(csvfile, delimiter=',', quotechar='|')
+        next(linereader) # skip the header line in the csv file
+        row = next(linereader)
+        trace_misc['nrRW1Missed'] = int(row[0])
+        trace_misc['nrRW2Missed'] = int(row[1])
 
     # parse sim settings file:
     sim_settings_file_name = csvfilename.replace("trace-mac-packets.csv", "sim-settings.txt")
@@ -223,6 +217,80 @@ for csvfilename in args.csvfiles:
             p_drcalcfixeddr = re.compile('Fixed Data Rate Index = ([0-9]+)')
             sim_settings['drCalcMethodMisc'] = int(p_drcalcfixeddr.search (sim_settings_file_contents).groups()[0])
 
+    # Generate output:
+    print("\nUpstream stats: {}".format(upstream_stats))
+    print("Number of times a MAC event occured per US packet:")
+    print("{:<26}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}".format("Traffic | Number of times:", 0, 1, 2, 3, 4, "Sum", "W sum"))
+    print("{:<26}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}".format("US sent", upstream_stats_sent[0], upstream_stats_sent[1], upstream_stats_sent[2], upstream_stats_sent[3], upstream_stats_sent[4],
+        upstream_stats_sent[0] + upstream_stats_sent[1] + upstream_stats_sent[2] + upstream_stats_sent[3] + upstream_stats_sent[4],
+        0*upstream_stats_sent[0] + 1*upstream_stats_sent[1] + 2*upstream_stats_sent[2] + 3*upstream_stats_sent[3] + 4*upstream_stats_sent[4]))
+    print("{:<26}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}".format("US received", upstream_stats_received[0], upstream_stats_received[1], upstream_stats_received[2], upstream_stats_received[3], upstream_stats_received[4],
+        upstream_stats_received[0] + upstream_stats_received[1] + upstream_stats_received[2] + upstream_stats_received[3] + upstream_stats_received[4],
+        0*upstream_stats_received[0] + 1*upstream_stats_received[1] + 2*upstream_stats_received[2] + 3*upstream_stats_received[3] + 4*upstream_stats_received[4]))
+    print("{:<26}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}".format("US senttries", upstream_stats_senttries[0], upstream_stats_senttries[1], upstream_stats_senttries[2], upstream_stats_senttries[3], upstream_stats_senttries[4],
+        upstream_stats_senttries[0] + upstream_stats_senttries[1] + upstream_stats_senttries[2] + upstream_stats_senttries[3] + upstream_stats_senttries[4],
+        0*upstream_stats_senttries[0] + 1*upstream_stats_senttries[1] + 2*upstream_stats_senttries[2] + 3*upstream_stats_senttries[3] + 4*upstream_stats_senttries[4]))
+
+    print("Number of times a US packet was received vs number of times it was sent (nGateways = {}):".format(sim_settings['nGateways']))
+    # print columns 0 .. nGateways*[1:4]
+    format_string = "{:<20}" # #sent column
+    format_string += "{:>10}" # zero times received column
+    format_string += "{:>10}{:>10}{:>10}{:>10}"*sim_settings['nGateways'] # 1, 2, 3, 4, ..., nGateways*4 times received
+    # format_string += "{:>20}" # Total not received column
+    format_string_heading_args = ["#sent | #received", 0]
+    format_string_heading_args.extend(list(range(1,4*sim_settings['nGateways'] + 1)))
+    # format_string_heading_args.append("Total not received")
+    print(format_string.format(*format_string_heading_args)) # "#sent | #received", 0, 1, 2, 3, 4, "Total not received"))
+    for nr_sent_it in range(1, 4+1):
+        format_args = [nr_sent_it]
+        for nr_received_it in range(0, 4*sim_settings['nGateways'] + 1):
+             format_args.append(us_packets_sent_vs_received[nr_sent_it][nr_received_it])
+        # total_not_received = "-"
+        # format_args.append(total_not_received)
+
+        # print(format_args)
+        print(format_string.format(*format_args)) # use splat operator (*) to pass unknown number of positional arguments
+    # print("{:<20}{:>10}{:>10}{:>10}{:>10}{:>10}{:>20}".format("#sent | #received", 0, 1, 2, 3, 4, "Total not received"))
+    # print("{:<20}{:>10}{:>10}{:>10}{:>10}{:>10}{:>20}".format("1",us_packets_sent_vs_received[1][0], us_packets_sent_vs_received[1][1],"","","",
+    #     1*us_packets_sent_vs_received[1][0]))
+    # print("{:<20}{:>10}{:>10}{:>10}{:>10}{:>10}{:>20}".format("2",us_packets_sent_vs_received[2][0], us_packets_sent_vs_received[2][1], us_packets_sent_vs_received[2][2],"","",
+    #     2*us_packets_sent_vs_received[2][0] + 1*us_packets_sent_vs_received[2][1]))
+    # print("{:<20}{:>10}{:>10}{:>10}{:>10}{:>10}{:>20}".format("3",us_packets_sent_vs_received[3][0], us_packets_sent_vs_received[3][1], us_packets_sent_vs_received[3][2], us_packets_sent_vs_received[3][3],"",
+    #     3*us_packets_sent_vs_received[3][0] + 2*us_packets_sent_vs_received[3][1] + 1*us_packets_sent_vs_received[3][2]))
+    # print("{:<20}{:>10}{:>10}{:>10}{:>10}{:>10}{:>20}".format("4",us_packets_sent_vs_received[4][0], us_packets_sent_vs_received[4][1], us_packets_sent_vs_received[4][2], us_packets_sent_vs_received[4][3], us_packets_sent_vs_received[4][4],
+    #     4*us_packets_sent_vs_received[4][0] + 3*us_packets_sent_vs_received[4][1] + 2*us_packets_sent_vs_received[4][2] + 1*us_packets_sent_vs_received[4][3]))
+    print("number_of_us_sent_packets_that_were_not_received = {} (broken for nGateways > 1)".format(number_of_us_sent_packets_that_were_not_received))
+
+    print("\nDS stats: {}".format(downstream_stats))
+    print("{:<25}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}".format("Traffic | number of times:", 0, 1, 2, 3, 4, "Sum", "W sum"))
+    print("{:<26}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}".format("DS sent", downstream_stats_sent[0], downstream_stats_sent[1], downstream_stats_sent[2], downstream_stats_sent[3], downstream_stats_sent[4],
+        downstream_stats_sent[0] + downstream_stats_sent[1] + downstream_stats_sent[2] + downstream_stats_sent[3] + downstream_stats_sent[4],
+        0*downstream_stats_sent[0] + 1*downstream_stats_sent[1] + 2*downstream_stats_sent[2] + 3*downstream_stats_sent[3] + 4*downstream_stats_sent[4]))
+    print("{:<26}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}".format("DS received", downstream_stats_received[0], downstream_stats_received[1], downstream_stats_received[2], downstream_stats_received[3], downstream_stats_received[4],
+        downstream_stats_received[0] + downstream_stats_received[1] + downstream_stats_received[2] + downstream_stats_received[3] + downstream_stats_received[4],
+        0*downstream_stats_received[0] + 1*downstream_stats_received[1] + 2*downstream_stats_received[2] + 3*downstream_stats_received[3] + 4*downstream_stats_received[4]))
+    print("{:<26}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}".format("DS senttries", downstream_stats_senttries[0], downstream_stats_senttries[1], downstream_stats_senttries[2], downstream_stats_senttries[3], downstream_stats_senttries[4],
+        downstream_stats_senttries[0] + downstream_stats_senttries[1] + downstream_stats_senttries[2] + downstream_stats_senttries[3] + downstream_stats_senttries[4],
+        0*downstream_stats_senttries[0] + 1*downstream_stats_senttries[1] + 2*downstream_stats_senttries[2] + 3*downstream_stats_senttries[3] + 4*downstream_stats_senttries[4]))
+    print("number_of_ds_sent_packets_that_were_not_received = {}".format(number_of_ds_sent_packets_that_were_not_received))
+    c = Counter(ds_phy_indexes)
+    # rw2_phy_index = c.most_common(1)[0][0] # assume the most common Phy index is the phy index for the special RW2 Phy
+    rw2_phy_index = 49
+    # assert rw2_phy_index == 49
+    nr_ds_tx_sent_rw1 = 0
+    nr_ds_tx_sent_rw2 = 0
+    for phy_index in c:
+        if phy_index == rw2_phy_index:
+             nr_ds_tx_sent_rw2 += c[phy_index]
+        else:
+             nr_ds_tx_sent_rw1 += c[phy_index]
+    print("DS transmissions sent in RW1/RW2: {}/{}. Sum = {}".format(nr_ds_tx_sent_rw1, nr_ds_tx_sent_rw2, nr_ds_tx_sent_rw1 + nr_ds_tx_sent_rw2))
+    print("DS transmissions received in RW1/RW2/not received: {}/{}/{}. Sum = {}".format(nr_ds_tx_received_rw1, nr_ds_tx_received_rw2, nr_ds_tx_not_received,nr_ds_tx_received_rw1 + nr_ds_tx_received_rw2 + nr_ds_tx_not_received ))
+    print("DS transmissions sent in RW1 but not received: {}".format(nr_ds_tx_sent_rw1 - nr_ds_tx_received_rw1))
+    print("DS transmissions sent in RW2 but not received: {}".format(nr_ds_tx_sent_rw2 - nr_ds_tx_received_rw2))
+    print("DS nrRW1Missed/nrRW2Missed: {}/{}".format(trace_misc['nrRW1Missed'], trace_misc['nrRW2Missed']))
+    print("DS nrRW1Missed-nrRW2Missed = {}".format(trace_misc['nrRW1Missed'] - trace_misc['nrRW2Missed']))
+
     # # Generate output per simulation
     print ("\nAppending output per simulation to {}".format(args.outputfilesimulation))
     write_header = False
@@ -233,14 +301,16 @@ for csvfilename in args.csvfiles:
                        "<usConfirmedData>,<usDataPeriod>,<usDelivered>,<usPackets>,<PDR>,<usSent>,<usReceived>,"\
                        "<usSent0>,<usSent1>,<usSent2>,<usSent3>,<usSent4>,"\
                        "<usReceived0>,<usReceived1>,<usReceived2>,<usReceived3>,<usReceived4>,"\
-                       "<usSentTries0>,<usSentTries1>,<usSentTries2>,<usSentTries3>,<usSentTries4>,"\
-                       "<usSent1Received0>,<usSent1Received1>,"\
-                       "<usSent2Received0>,<usSent2Received1>,<usSent2Received2>,"\
-                       "<usSent3Received0>,<usSent3Received1>,<usSent3Received2>,<usSent3Received3>,"\
-                       "<usSent4Received0>,<usSent4Received1>,<usSent4Received2>,<usSent4Received3>,<usSent4Received4>,"\
-                       "<dsSent0>,<dsSent1>,<dsSent2>,<dsSent3>,<dsSent4>,"\
+                       "<usSentTries0>,<usSentTries1>,<usSentTries2>,<usSentTries3>,<usSentTries4>,"
+        for sent_it in range(1, 4 + 1):
+            for recv_it in range(0, 4*4 + 1):
+                outputFormat+="<usS{}R{}>,".format(sent_it, recv_it)
+
+        outputFormat+= "<dsSent0>,<dsSent1>,<dsSent2>,<dsSent3>,<dsSent4>,"\
                        "<dsReceived0>,<dsReceived1>,<dsReceived2>,<dsReceived3>,<dsReceived4>,"\
-                       "<dsSentTries0>,<dsSentTries1>,<dsSentTries2>,<dsSentTries3>,<dsSentTries4>\n"
+                       "<dsSentTries0>,<dsSentTries1>,<dsSentTries2>,<dsSentTries3>,<dsSentTries4>,"\
+                       "<dsRW1Sent>,<dsRW2Sent>,<dsRW1Received>,<dsRW2Received>,<dsNotReceived>,"\
+                       "<dsRW1Missed>,<dsRW2Missed>\n"
         if write_header:
             output_file.write(outputFormat)
 
@@ -253,29 +323,39 @@ for csvfilename in args.csvfiles:
             output_line_dr_pdrs = output_line_dr_pdrs + "{},{},{:1.4f},".format(dr_delivered, dr_tx, dr_pdr)
         output_line_dr_pdrs = output_line_dr_pdrs[:-1] # remove trailing comma
 
+        # sim settings + us stats
         output_line = "{},{},{},{},{},{},"\
                       "{},{},{},{},{:1.4f},{},{},"\
                       "{},{},{},{},{},"\
                       "{},{},{},{},{},"\
-                      "{},{},{},{},{},"\
-                      "{},{},"\
-                      "{},{},{},"\
-                      "{},{},{},{},"\
-                      "{},{},{},{},{},"\
-                      "{},{},{},{},{},"\
-                      "{},{},{},{},{},"\
-                      "{},{},{},{},{}\n".format(sim_settings['nGateways'], sim_settings['nEndDevices'], sim_settings['totalTime'], sim_settings['drCalcMethod'], sim_settings['drCalcMethodMisc'], sim_settings['seed'],
-                                                sim_settings['usConfirmedData'], sim_settings['usDataPeriod'], upstream_stats['nrDelivered'], upstream_stats['nrPackets'], upstream_stats['nrDelivered']/upstream_stats['nrPackets'], upstream_stats['nrSent'], upstream_stats['nrReceived'],
-                                                upstream_stats_sent[0],upstream_stats_sent[1],upstream_stats_sent[2],upstream_stats_sent[3],upstream_stats_sent[4],
-                                                upstream_stats_received[0],upstream_stats_received[1],upstream_stats_received[2],upstream_stats_received[3],upstream_stats_received[4],
-                                                upstream_stats_senttries[0],upstream_stats_senttries[1],upstream_stats_senttries[2],upstream_stats_senttries[3],upstream_stats_senttries[4],
-                                                us_packets_sent_vs_received[1][0], us_packets_sent_vs_received[1][1],
-                                                us_packets_sent_vs_received[2][0], us_packets_sent_vs_received[2][1], us_packets_sent_vs_received[2][2],
-                                                us_packets_sent_vs_received[3][0], us_packets_sent_vs_received[3][1], us_packets_sent_vs_received[3][2], us_packets_sent_vs_received[3][3],
-                                                us_packets_sent_vs_received[4][0], us_packets_sent_vs_received[4][1], us_packets_sent_vs_received[4][2], us_packets_sent_vs_received[4][3], us_packets_sent_vs_received[4][4],
-                                                downstream_stats_sent[0],downstream_stats_sent[1],downstream_stats_sent[2],downstream_stats_sent[3],downstream_stats_sent[4],
-                                                downstream_stats_received[0],downstream_stats_received[1],downstream_stats_received[2],downstream_stats_received[3],downstream_stats_received[4],
-                                                downstream_stats_senttries[0],downstream_stats_senttries[1],downstream_stats_senttries[2],downstream_stats_senttries[3],downstream_stats_senttries[4])
+                      "{},{},{},{},{},".format(sim_settings['nGateways'], sim_settings['nEndDevices'], sim_settings['totalTime'], sim_settings['drCalcMethod'], sim_settings['drCalcMethodMisc'], sim_settings['seed'],
+                                               sim_settings['usConfirmedData'], sim_settings['usDataPeriod'], upstream_stats['nrDelivered'], upstream_stats['nrPackets'], upstream_stats['nrDelivered']/upstream_stats['nrPackets'], upstream_stats['nrSent'], upstream_stats['nrReceived'],
+                                               upstream_stats_sent[0],upstream_stats_sent[1],upstream_stats_sent[2],upstream_stats_sent[3],upstream_stats_sent[4],
+                                               upstream_stats_received[0],upstream_stats_received[1],upstream_stats_received[2],upstream_stats_received[3],upstream_stats_received[4],
+                                               upstream_stats_senttries[0],upstream_stats_senttries[1],upstream_stats_senttries[2],upstream_stats_senttries[3],upstream_stats_senttries[4])
+
+        # nr of times sent vs nr of times received
+        for nr_sent_it in range(1, 4+1):
+            format_string = "{},"
+            format_string += "{},{},{},{},"*4
+            format_args = [] # [us_packets_sent_vs_received[nr_sent_it][0]]
+            for nr_received_it in range(0, 4*4 + 1):
+                 format_args.append(us_packets_sent_vs_received[nr_sent_it][nr_received_it])
+
+            s = format_string.format(*format_args)
+            output_line += s
+
+        # downstream stats
+        output_line += "{},{},{},{},{},"\
+                       "{},{},{},{},{},"\
+                       "{},{},{},{},{},"\
+                       "{},{},{},{},{},"\
+                       "{},{}\n".format(downstream_stats_sent[0],downstream_stats_sent[1],downstream_stats_sent[2],downstream_stats_sent[3],downstream_stats_sent[4],
+                                                 downstream_stats_received[0],downstream_stats_received[1],downstream_stats_received[2],downstream_stats_received[3],downstream_stats_received[4],
+                                                 downstream_stats_senttries[0],downstream_stats_senttries[1],downstream_stats_senttries[2],downstream_stats_senttries[3],downstream_stats_senttries[4],
+                                                 nr_ds_tx_sent_rw1, nr_ds_tx_sent_rw2, nr_ds_tx_received_rw1, nr_ds_tx_received_rw2, nr_ds_tx_not_received,
+                                                 trace_misc['nrRW1Missed'], trace_misc['nrRW2Missed'])
+
         output_file.write(output_line)
 
     # # Generate output per node
