@@ -21,6 +21,9 @@ usPacketSize = 21
 usDataPeriod = 6000
 usConfirmedData = 1
 dsDataGenerate = 1
+dsConfirmedData = 1
+dsPacketSize = 21
+dsDataExpMean = 60000
 verbose = 0
 stdcout = 0
 tracePhyTransmissions = 0
@@ -44,9 +47,9 @@ if __name__ == "__main__":
                 outputFileNamePrefix = "simulations/output/downstream/LoRaWAN-downstream-{}-{}-{}-{}".format (nGateways, usDataPeriod, dsDataExpMean, nEndDevices) # note: relative to ns-3 root folder
 
                 cli_command = "./waf --run=lorawan-example-tracing --command-template=\"%s --randomSeed={} --nEndDevices={} --nGateways={} --discRadius={} --totalTime={} --nRuns={} --drCalcMethodIndex={} --drCalcPerLimit={} "\
-                    "--usPacketSize={} --usDataPeriod={} --usConfirmedData={} --dsDataGenerate={} --dsDataExpMean={} --verbose={} --stdcout={} --tracePhyTransmissions={} --tracePhyStates={} --traceMacPackets={} --traceMacStates={} --traceMisc={} --outputFileNamePrefix={}\""\
+                    "--usPacketSize={} --usDataPeriod={} --usConfirmedData={} --dsDataGenerate={} --dsConfirmedData={} --dsPacketSize={} --dsDataExpMean={} --verbose={} --stdcout={} --tracePhyTransmissions={} --tracePhyStates={} --traceMacPackets={} --traceMacStates={} --traceMisc={} --outputFileNamePrefix={}\""\
                     .format(randomSeed, nEndDevices, nGateways, discRadius, totalTime, nRuns, drCalcMethodIndex, drCalcPerLimit,
-                            usPacketSize, usDataPeriod, usConfirmedData, dsDataGenerate, dsDataExpMean, verbose, stdcout, tracePhyTransmissions, tracePhyStates, traceMacPackets, traceMacStates, traceMisc, outputFileNamePrefix)
+                            usPacketSize, usDataPeriod, usConfirmedData, dsDataGenerate, dsConfirmedData, dsPacketSize, dsDataExpMean, verbose, stdcout, tracePhyTransmissions, tracePhyStates, traceMacPackets, traceMacStates, traceMisc, outputFileNamePrefix)
                 cli_commands.append(cli_command)
 
     # Dispatch celery tasks:
