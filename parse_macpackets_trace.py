@@ -107,9 +107,10 @@ for csvfilename in args.csvfiles:
         else:
             # This should only happen at the end of trace:
             fraction = packet['Timestamp']/last_timestamp
-            if fraction < 0.99: # only print if we are not near the end of the mac packet trace
-                print("key={}: Unexpected case, skipping this packet. {}/{}. packet = {}".format(key, packet['Timestamp'], last_timestamp, packet))
-            continue
+            if not tx_node_devicetype == 0: # does not apply to DS traffic sent by gateway
+                if fraction < 0.99: # only print if we are not near the end of the mac packet trace
+                    print("key={}: Unexpected case, skipping this packet. {}/{}. packet = {}".format(key, packet['Timestamp'], last_timestamp, packet))
+                continue
 
         # For unconfirmed downstream transmissions check whether the transmission was received in RW1/RW2/not received
         # For downstream transmissions, assume unconfirmed messages. Therefor Mac will always generate MacTxOk; so instead check MacRx to see if the unconfirmed transmissions was actually received
@@ -184,8 +185,8 @@ for csvfilename in args.csvfiles:
         linereader = csv.reader(csvfile, delimiter=',', quotechar='|')
         next(linereader) # skip the header line in the csv file
         row = next(linereader)
-        trace_misc['nrRW1Missed'] = int(row[0])
-        trace_misc['nrRW2Missed'] = int(row[1])
+        trace_misc['nrRW1Missed'] = int(row[2])
+        trace_misc['nrRW2Missed'] = int(row[3])
 
     # parse sim settings file:
     sim_settings_file_name = csvfilename.replace("trace-mac-packets.csv", "sim-settings.txt")

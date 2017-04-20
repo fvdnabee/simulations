@@ -73,16 +73,18 @@ for csvfilename in args.csvfiles:
         len_dsmsgtx = len(nsds_messages[k]['DSMsgTx'])
         len_dsmsgackd = len(nsds_messages[k]['DSMsgAckd'])
         len_dsmsgdrop = len(nsds_messages[k]['DSMsgDrop'])
-        assert len_dsmsgtx > 0 # assume packet was sent at least once
+        # assert len_dsmsgtx > 0 # assume packet was sent at least once
+        if len_dsmsgtx == 0:
+            print("PACKET NEVER SENT, SKIPPING: {}".format(nsds_messages[k]))
+            continue
 
         # check for sent packets without an Ack that were not dropped
         # if this occured near the end of the simulation then, don't process these packets
         if len_dsmsgackd == 0 and len_dsmsgdrop == 0:
             packet_timestamp = nsds_messages[k]['DSMsgTx'][0][0]
             fraction = packet_timestamp/last_timestamp
-            if fraction < 0.99: # only print if we are not near the end of the trace
-                 print("key={}: Unexpected case, skipping this packet. {}/{}. nsds_message = {}".format(k, packet_timestamp, last_timestamp, nsds_messages[k]))
-            continue
+            if fraction >= 0.99:
+                continue
 
         if len_dsmsgtx > 0:
             nr_dsmsgtx_unique += 1
@@ -114,8 +116,11 @@ for csvfilename in args.csvfiles:
     print("Number of Ackd DS messages by NS: {}".format(nr_dsmsgackd))
     print("Number of dropped DS messages by NS: {}".format(nr_dsmsgdrop))
     print("PDR: {:.4f} {:.4f}".format(nr_dsmsgackd/nr_dsmsgtx_unique, (nr_dsmsgtx_unique-nr_dsmsgdrop)/nr_dsmsgtx_unique))
-    print("Average nr of sent DS message per unique DS message: {:.4f}".format(nr_dsmsgtx/nr_dsmsgtx_unique))
-    print("Average nr of sent DS message per Ackd DS message: {:.4f}".format(nr_dsmsgtx/nr_dsmsgackd))
+
+    if nr_dsmsgtx_unique > 0:
+        print("Average nr of sent DS message per unique DS message: {:.4f}".format(nr_dsmsgtx/nr_dsmsgtx_unique))
+    if nr_dsmsgackd > 0:
+        print("Average nr of sent DS message per Ackd DS message: {:.4f}".format(nr_dsmsgtx/nr_dsmsgackd))
 
     print("\nNumber of remaining TX for Ackd DS message: {}".format(nr_ackd_tx_remaining))
     print("{:<25}{:>10}{:>10}{:>10}{:>10}".format("Remaining TX", 0, 1, 2, 3))
