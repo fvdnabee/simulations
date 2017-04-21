@@ -408,7 +408,7 @@ for csvfilename in args.csvfiles:
                       "{},{},{},{}\n".format(sim_settings['nGateways'], sim_settings['nEndDevices'], sim_settings['totalTime'], sim_settings['drCalcMethod'], sim_settings['drCalcMethodMisc'], sim_settings['seed'],
                                                sim_settings['usConfirmedData'], sim_settings['usDataPeriod'], sim_settings['dsDataGenerate'],  sim_settings['dsConfirmedData'],  sim_settings['dsDataExpMean'], 
                                                upstream_stats['nrDelivered'], upstream_stats['nrPackets'], upstream_stats['nrDelivered']/upstream_stats['nrPackets'], upstream_stats['nrSent'], upstream_stats['nrReceived'],
-                                               downstream_stats['nrDelivered'], downstream_stats['nrPackets'], downstream_stats['nrReceived']/downstream_stats['nrPackets'], downstream_stats['nrSent'], downstream_stats['nrReceived'],
+                                               downstream_stats['nrDelivered'], downstream_stats['nrPackets'], downstream_stats['nrDelivered']/downstream_stats['nrPackets'], downstream_stats['nrSent'], downstream_stats['nrReceived'],
                                                trace_misc['nrRW1Sent'], trace_misc['nrRW2Sent'], trace_misc['nrRW1Missed'], trace_misc['nrRW2Missed'])
         output_file.write(output_line)
 
