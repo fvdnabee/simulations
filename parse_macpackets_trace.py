@@ -1,5 +1,7 @@
 #!/usr/bin/python3
 # Parse ns-3 lorawan MAC packets trace CSV output files
+# This script can not be used to determine PDR of confirmed downstream
+# messages, use the parse_nsdsmsgs_trace.py script instead
 import csv
 import argparse
 import re
@@ -9,6 +11,7 @@ from collections import Counter
 parser = argparse.ArgumentParser(description='Process ns-3 lorawan MAC packets CSV output file.')
 parser.add_argument('csvfiles', nargs='+', help='The CSV files to be parsed')
 parser.add_argument('--output-file-simulation', dest='outputfilesimulation', default="parse_macpackets_trace_per_simulation.csv", help='The output CSV file')
+parser.add_argument('--output-file-simulation-compact', dest='outputfilesimulationcompact', default="parse_macpackets_trace_per_simulation_compact.csv", help='The compact output CSV file')
 parser.add_argument('--output-file-enddevices', dest='outputfileenddevice', default="parse_macpackets_trace_per_enddevice.csv", help='The output CSV file')
 # parser.add_argument('--parseapppackets', type=bool, default=False, help='Parse app packets?')
 #feature_parser = parser.add_mutually_exclusive_group(required=False)
@@ -90,10 +93,14 @@ for csvfilename in args.csvfiles:
         nr_received_dropped = len(packet['MacRxDrop'])
 
         # Either packet is in MacTxOk or in MacTxDrop
+        # Note that unconfirmed upstream messages are always immediately in MacTxOk, even though they might be undelivered. That is why we check MacRx as well below
+        # Downstream messages are also always in MacTxOk, regardless whether they are confirmed or unconfirmed
+        # For unconfirmed downstream messages, this script can be used as it also checked MacRx
+        # For confirmed downstream messages, use the parse_nsdsmsgs_trace.py script as it tracks Acknowledgements at the NS
+
         delivered = False
         nr_sent_tries = 0
         if len(packet['MacTxOk']) == 1:
-            delivered = True
             if len(packet['MacSentPktMisc']) > 0:
                 nr_sent_tries = packet['MacSentPktMisc'][0][1]
                 if nr_sent != nr_sent_tries:
@@ -102,6 +109,13 @@ for csvfilename in args.csvfiles:
             else:
                 print ("WARNING skipping packet because packet['MacSentPktMisc'] is empty for packet = {}".format(packet))
                 continue
+
+            # this check is necessary for unconfirmed upstream messages and all downstream messages
+            if (len(packet['MacRx']) > 0):
+                for macrx_node_id in packet['MacRx']:
+                    # check if device type of receiver is opposite that of the sender
+                    if tx_node_devicetype != nodes[macrx_node_id]['DeviceType']:
+                        delivered = True
         elif len(packet['MacTxDrop']) == 1:
             delivered = False
         else:
@@ -180,18 +194,21 @@ for csvfilename in args.csvfiles:
 
     # parse trace misc csv file:
     trace_misc_file_name = csvfilename.replace("trace-mac-packets.csv", "trace-misc.csv")
-    trace_misc = {"nrRW1Missed": -1,"nrRW2Missed": -1}
+    trace_misc = {"nrRW1Sent": -1, "nrRW2Sent": -1, "nrRW1Missed": -1,"nrRW2Missed": -1}
     with open(trace_misc_file_name, newline='') as csvfile:
         linereader = csv.reader(csvfile, delimiter=',', quotechar='|')
         next(linereader) # skip the header line in the csv file
         row = next(linereader)
+        trace_misc['nrRW1Sent'] = int(row[0])
+        trace_misc['nrRW2Sent'] = int(row[1])
         trace_misc['nrRW1Missed'] = int(row[2])
         trace_misc['nrRW2Missed'] = int(row[3])
 
     # parse sim settings file:
     sim_settings_file_name = csvfilename.replace("trace-mac-packets.csv", "sim-settings.txt")
 
-    sim_settings = {"nGateways": -1, "nEndDevices": -1, "totalTime": -1, "usConfirmedData": -1, "usDataPeriod": -1, "seed": -1, "drCalcMethod": -1, "drCalcMethodMisc": -1  }
+    sim_settings = {"nGateways": -1, "nEndDevices": -1, "totalTime": -1, "usConfirmedData": -1, "usDataPeriod": -1, "seed": -1, "drCalcMethod": -1, "drCalcMethodMisc": -1, "dsDataGenerate": -1, "dsDataExpMean": -1, "dsConfirmedData": -1}
+ 
     with open(sim_settings_file_name) as sim_settings_file:
         sim_settings_file_contents = sim_settings_file.read()
 
@@ -202,6 +219,9 @@ for csvfilename in args.csvfiles:
         p_data_period = re.compile('usDataPeriod = ([0-9]+)')
         p_seed = re.compile('seed = ([0-9]+)')
         p_drcalcmethod = re.compile('Data rate assignment method index: ([0-9]+)')
+        p_dsdatagenerate = re.compile('dsDataGenerate = ([0-1])')
+        p_dsdataexpmean = re.compile('dsDataExpMean = ([0-9]+)')
+        p_dsconfirmeddata = re.compile('dsConfirmedData = ([0-1])')
 
         sim_settings['nGateways'] = int(p_ngateways.search (sim_settings_file_contents).groups()[0])
         sim_settings['nEndDevices'] = int(p_nenddevices.search (sim_settings_file_contents).groups()[0])
@@ -209,6 +229,9 @@ for csvfilename in args.csvfiles:
         sim_settings['usConfirmedData'] = int(p_confirmed_data.search (sim_settings_file_contents).groups()[0])
         sim_settings['usDataPeriod'] = int(p_data_period.search (sim_settings_file_contents).groups()[0])
         sim_settings['seed'] = int(p_seed.search (sim_settings_file_contents).groups()[0])
+        sim_settings['dsDataGenerate'] = int(p_dsdatagenerate.search (sim_settings_file_contents).groups()[0])
+        sim_settings['dsDataExpMean'] = int(p_dsdataexpmean.search (sim_settings_file_contents).groups()[0])
+        sim_settings['dsConfirmedData'] = int(p_dsconfirmeddata.search (sim_settings_file_contents).groups()[0])
 
         sim_settings['drCalcMethod'] = int(p_drcalcmethod.search (sim_settings_file_contents).groups()[0])
         if sim_settings['drCalcMethod'] == 0:
@@ -289,6 +312,8 @@ for csvfilename in args.csvfiles:
     print("DS transmissions received in RW1/RW2/not received: {}/{}/{}. Sum = {}".format(nr_ds_tx_received_rw1, nr_ds_tx_received_rw2, nr_ds_tx_not_received,nr_ds_tx_received_rw1 + nr_ds_tx_received_rw2 + nr_ds_tx_not_received ))
     print("DS transmissions sent in RW1 but not received: {}".format(nr_ds_tx_sent_rw1 - nr_ds_tx_received_rw1))
     print("DS transmissions sent in RW2 but not received: {}".format(nr_ds_tx_sent_rw2 - nr_ds_tx_received_rw2))
+    print("Misc CSV file contents:")
+    print("DS nrRW1Sent/nrRW2Sent: {}/{}".format(trace_misc['nrRW1Sent'], trace_misc['nrRW2Sent']))
     print("DS nrRW1Missed/nrRW2Missed: {}/{}".format(trace_misc['nrRW1Missed'], trace_misc['nrRW2Missed']))
     print("DS nrRW1Missed-nrRW2Missed = {}".format(trace_misc['nrRW1Missed'] - trace_misc['nrRW2Missed']))
 
@@ -357,6 +382,34 @@ for csvfilename in args.csvfiles:
                                                  nr_ds_tx_sent_rw1, nr_ds_tx_sent_rw2, nr_ds_tx_received_rw1, nr_ds_tx_received_rw2, nr_ds_tx_not_received,
                                                  trace_misc['nrRW1Missed'], trace_misc['nrRW2Missed'])
 
+        output_file.write(output_line)
+
+
+    # Generate compact output file:
+    print ("\nAppending compact output per simulation to {}".format(args.outputfilesimulationcompact))
+    write_header = False
+    if not os.path.exists(args.outputfilesimulationcompact):
+        write_header = True
+    with open(args.outputfilesimulationcompact, 'a') as output_file: # append to output file
+        outputFormat = "<nGateways>,<nEndDevices>,<totalTime>,<drCalcMethod>,<drCalcMethodMisc>,<seed>,"\
+                       "<usConfirmedData>,<usDataPeriod>,<dsDataGenerate>,<dsConfirmedData>,<dsDataExpMean>,"\
+                       "<usDelivered>,<usPackets>,<PDR>,<usSent>,<usReceived>,"\
+                       "<dsDelivered>,<dsPackets>,<dsPDR>,<dsSent>,<dsReceived>,"\
+                       "<dsRW1Sent>,<dsRW2Sent>,<dsRW1Missed>,<dsRW2Missed>\n"
+
+        if write_header:
+            output_file.write(outputFormat)
+
+        # sim settings + us stats + ds stats
+        output_line = "{},{},{},{},{},{},"\
+                      "{},{},{},{},{},"\
+                      "{},{},{:1.4f},{},{},"\
+                      "{},{},{:1.4f},{},{},"\
+                      "{},{},{},{}\n".format(sim_settings['nGateways'], sim_settings['nEndDevices'], sim_settings['totalTime'], sim_settings['drCalcMethod'], sim_settings['drCalcMethodMisc'], sim_settings['seed'],
+                                               sim_settings['usConfirmedData'], sim_settings['usDataPeriod'], sim_settings['dsDataGenerate'],  sim_settings['dsConfirmedData'],  sim_settings['dsDataExpMean'], 
+                                               upstream_stats['nrDelivered'], upstream_stats['nrPackets'], upstream_stats['nrDelivered']/upstream_stats['nrPackets'], upstream_stats['nrSent'], upstream_stats['nrReceived'],
+                                               downstream_stats['nrDelivered'], downstream_stats['nrPackets'], downstream_stats['nrReceived']/downstream_stats['nrPackets'], downstream_stats['nrSent'], downstream_stats['nrReceived'],
+                                               trace_misc['nrRW1Sent'], trace_misc['nrRW2Sent'], trace_misc['nrRW1Missed'], trace_misc['nrRW2Missed'])
         output_file.write(output_line)
 
     # # Generate output per node
