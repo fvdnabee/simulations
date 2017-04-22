@@ -395,7 +395,8 @@ for csvfilename in args.csvfiles:
                        "<usConfirmedData>,<usDataPeriod>,<dsDataGenerate>,<dsConfirmedData>,<dsDataExpMean>,"\
                        "<usDelivered>,<usPackets>,<PDR>,<usSent>,<usReceived>,"\
                        "<dsDelivered>,<dsPackets>,<dsPDR>,<dsSent>,<dsReceived>,"\
-                       "<dsRW1Sent>,<dsRW2Sent>,<dsRW1Missed>,<dsRW2Missed>\n"
+                       "<dsRW1SentMac>,<dsRW2SentMac>,<dsRW1Received>,<dsRW2Received>,<dsNotReceived>,"\
+                       "<dsRW1SentMisc>,<dsRW2SentMisc>,<dsRW1MissedMisc>,<dsRW2MissedMisc>\n"
 
         if write_header:
             output_file.write(outputFormat)
@@ -405,14 +406,16 @@ for csvfilename in args.csvfiles:
                       "{},{},{},{},{},"\
                       "{},{},{:1.4f},{},{},"\
                       "{},{},{:1.4f},{},{},"\
+                      "{},{},{},{},{},"\
                       "{},{},{},{}\n".format(sim_settings['nGateways'], sim_settings['nEndDevices'], sim_settings['totalTime'], sim_settings['drCalcMethod'], sim_settings['drCalcMethodMisc'], sim_settings['seed'],
                                                sim_settings['usConfirmedData'], sim_settings['usDataPeriod'], sim_settings['dsDataGenerate'],  sim_settings['dsConfirmedData'],  sim_settings['dsDataExpMean'], 
                                                upstream_stats['nrDelivered'], upstream_stats['nrPackets'], upstream_stats['nrDelivered']/upstream_stats['nrPackets'], upstream_stats['nrSent'], upstream_stats['nrReceived'],
                                                downstream_stats['nrDelivered'], downstream_stats['nrPackets'], downstream_stats['nrDelivered']/downstream_stats['nrPackets'], downstream_stats['nrSent'], downstream_stats['nrReceived'],
+                                               nr_ds_tx_sent_rw1, nr_ds_tx_sent_rw2, nr_ds_tx_received_rw1, nr_ds_tx_received_rw2, nr_ds_tx_not_received,
                                                trace_misc['nrRW1Sent'], trace_misc['nrRW2Sent'], trace_misc['nrRW1Missed'], trace_misc['nrRW2Missed'])
         output_file.write(output_line)
 
-    # # Generate output per node
+    # Generate output per node
     print ("Appending output per end device to {}".format(args.outputfileenddevice))
     write_header = False
     if not os.path.exists(args.outputfileenddevice):
