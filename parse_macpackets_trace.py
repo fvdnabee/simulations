@@ -38,8 +38,9 @@ for csvfilename in args.csvfiles:
             if mac_packets_key not in mac_packets:
                 packet_timestamp = float(row[0])
                 phy_index = int(row[4])
+                packet_length = int(row[7])
                 last_timestamp = packet_timestamp
-                mac_packets[mac_packets_key] = {'Timestamp': packet_timestamp, 'PhyIndex': phy_index, 'MacTx': [], 'MacTxOk': [], 'MacTxDrop': [], 'MacRx': [], 'MacRxDrop': [], 'MacSentPkt': [], 'MacSentPktMisc': []}
+                mac_packets[mac_packets_key] = {'Timestamp': packet_timestamp, 'PacketLength': packet_length, 'PhyIndex': phy_index, 'MacTx': [], 'MacTxOk': [], 'MacTxDrop': [], 'MacRx': [], 'MacRxDrop': [], 'MacSentPkt': [], 'MacSentPktMisc': []}
             mac_packets[mac_packets_key][trace_source].append(node_id)
 
             if node_id not in nodes:
@@ -64,6 +65,7 @@ for csvfilename in args.csvfiles:
     downstream_stats_sent = [0, 0, 0, 0, 0]
     downstream_stats_received = [0, 0, 0, 0, 0]
     downstream_stats_senttries = [0, 0, 0, 0, 0]
+    dataonly_downstream_stats = {'nrPackets': 0, 'nrSent': 0, 'nrReceived': 0, 'nrDelivered': 0, 'nrUndelivered': 0, 'nrMacSentPktTries': 0}
     # us_packets_sent_vs_received = [[0],[0,0],[0,0,0],[0,0,0,0],[0,0,0,0,0]] # e.g. first index is number of times sent, second index is number of times received
     us_packets_sent_vs_received = [[0,0,0,0,0]*4,[0,0,0,0,0]*4,[0,0,0,0,0]*4,[0,0,0,0,0]*4,[0,0,0,0,0]*4] # e.g. first index is number of times sent, second index is number of times received
     ds_packets_sent_vs_received = [[0],[0,0],[0,0,0],[0,0,0,0],[0,0,0,0,0]]
@@ -178,6 +180,15 @@ for csvfilename in args.csvfiles:
                 number_of_ds_sent_packets_that_were_not_received += nr_sent-nr_received
 
             ds_phy_indexes.append(tx_phy_index)
+            if packet['PacketLength'] >= 21: # NOTE that in our experiments we sent 21B downstream data packets
+                dataonly_downstream_stats['nrPackets'] += 1
+                dataonly_downstream_stats['nrSent'] += nr_sent
+                dataonly_downstream_stats['nrReceived'] += nr_received
+                if delivered:
+                    dataonly_downstream_stats['nrDelivered'] += 1
+                else:
+                    dataonly_downstream_stats['nrUndelivered'] += 1
+                dataonly_downstream_stats['nrMacSentPktTries'] += nr_sent_tries
         else:
             print("Fatal error unknown device type")
             exit()
@@ -286,6 +297,7 @@ for csvfilename in args.csvfiles:
     print("number_of_us_sent_packets_that_were_not_received = {} (broken for nGateways > 1)".format(number_of_us_sent_packets_that_were_not_received))
 
     print("\nDS stats: {}".format(downstream_stats))
+    print("DS stats (data-only): {}".format(dataonly_downstream_stats))
     print("{:<25}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}".format("Traffic | number of times:", 0, 1, 2, 3, 4, "Sum", "W sum"))
     print("{:<26}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}{:>10}".format("DS sent", downstream_stats_sent[0], downstream_stats_sent[1], downstream_stats_sent[2], downstream_stats_sent[3], downstream_stats_sent[4],
         downstream_stats_sent[0] + downstream_stats_sent[1] + downstream_stats_sent[2] + downstream_stats_sent[3] + downstream_stats_sent[4],
@@ -394,7 +406,8 @@ for csvfilename in args.csvfiles:
         outputFormat = "<nGateways>,<nEndDevices>,<totalTime>,<drCalcMethod>,<drCalcMethodMisc>,<seed>,"\
                        "<usConfirmedData>,<usDataPeriod>,<dsDataGenerate>,<dsConfirmedData>,<dsDataExpMean>,"\
                        "<usDelivered>,<usPackets>,<PDR>,<usSent>,<usReceived>,"\
-                       "<dsDelivered>,<dsPackets>,<dsPDR>,<dsSent>,<dsReceived>,"\
+                       "<dsDeliveredAll>,<dsPacketsAll>,<dsPDRAll>,<dsSentAll>,<dsReceivedAll>,"\
+                       "<dsDeliveredData>,<dsPacketsData>,<nsdsGeneratedData>,<dsPDRData>,<dsSentData>,<dsReceivedData>,"\
                        "<dsRW1SentMac>,<dsRW2SentMac>,<dsRW1Received>,<dsRW2Received>,<dsNotReceived>,"\
                        "<dsRW1SentMisc>,<dsRW2SentMisc>,<dsRW1MissedMisc>,<dsRW2MissedMisc>\n"
 
@@ -406,11 +419,13 @@ for csvfilename in args.csvfiles:
                       "{},{},{},{},{},"\
                       "{},{},{:1.4f},{},{},"\
                       "{},{},{:1.4f},{},{},"\
+                      "{},{},{},{},{},{},"\
                       "{},{},{},{},{},"\
                       "{},{},{},{}\n".format(sim_settings['nGateways'], sim_settings['nEndDevices'], sim_settings['totalTime'], sim_settings['drCalcMethod'], sim_settings['drCalcMethodMisc'], sim_settings['seed'],
                                                sim_settings['usConfirmedData'], sim_settings['usDataPeriod'], sim_settings['dsDataGenerate'],  sim_settings['dsConfirmedData'],  sim_settings['dsDataExpMean'], 
                                                upstream_stats['nrDelivered'], upstream_stats['nrPackets'], upstream_stats['nrDelivered']/upstream_stats['nrPackets'], upstream_stats['nrSent'], upstream_stats['nrReceived'],
                                                downstream_stats['nrDelivered'], downstream_stats['nrPackets'], downstream_stats['nrDelivered']/downstream_stats['nrPackets'], downstream_stats['nrSent'], downstream_stats['nrReceived'],
+                                               dataonly_downstream_stats['nrDelivered'], dataonly_downstream_stats['nrPackets'], "?", "?", dataonly_downstream_stats['nrSent'], dataonly_downstream_stats['nrReceived'],
                                                nr_ds_tx_sent_rw1, nr_ds_tx_sent_rw2, nr_ds_tx_received_rw1, nr_ds_tx_received_rw2, nr_ds_tx_not_received,
                                                trace_misc['nrRW1Sent'], trace_misc['nrRW2Sent'], trace_misc['nrRW1Missed'], trace_misc['nrRW2Missed'])
         output_file.write(output_line)
