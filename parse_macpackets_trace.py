@@ -102,15 +102,17 @@ for csvfilename in args.csvfiles:
 
         delivered = False
         nr_sent_tries = 0
-        if len(packet['MacTxOk']) == 1:
+        if len(packet['MacTxOk']) >= 1:
             if len(packet['MacSentPktMisc']) > 0:
                 nr_sent_tries = packet['MacSentPktMisc'][0][1]
                 if nr_sent != nr_sent_tries:
                     print("nr_sent == {} and nr_sent_tries = {}, packet = {}".format(nr_sent, nr_sent_tries, packet))
                 assert nr_sent == nr_sent_tries
             else:
-                print ("WARNING skipping packet because packet['MacSentPktMisc'] is empty for packet = {}".format(packet))
-                continue
+                # print ("WARNING skipping packet because packet['MacSentPktMisc'] is empty for packet = {}".format(packet))
+                # continue
+                # instead of skipping here, we just set nr_sent_tries to the length of MacTx
+                nr_sent_tries = len(packet['MacTx'])
 
             # this check is necessary for unconfirmed upstream messages and all downstream messages
             if (len(packet['MacRx']) > 0):
@@ -424,7 +426,7 @@ for csvfilename in args.csvfiles:
                       "{},{},{},{}\n".format(sim_settings['nGateways'], sim_settings['nEndDevices'], sim_settings['totalTime'], sim_settings['drCalcMethod'], sim_settings['drCalcMethodMisc'], sim_settings['seed'],
                                                sim_settings['usConfirmedData'], sim_settings['usDataPeriod'], sim_settings['dsDataGenerate'],  sim_settings['dsConfirmedData'],  sim_settings['dsDataExpMean'], 
                                                upstream_stats['nrDelivered'], upstream_stats['nrPackets'], upstream_stats['nrDelivered']/upstream_stats['nrPackets'], upstream_stats['nrSent'], upstream_stats['nrReceived'],
-                                               downstream_stats['nrDelivered'], downstream_stats['nrPackets'], downstream_stats['nrDelivered']/downstream_stats['nrPackets'], downstream_stats['nrSent'], downstream_stats['nrReceived'],
+                                               downstream_stats['nrDelivered'], downstream_stats['nrPackets'], (downstream_stats['nrDelivered']/downstream_stats['nrPackets']) if downstream_stats['nrPackets'] > 0 else 0, downstream_stats['nrSent'], downstream_stats['nrReceived'],
                                                dataonly_downstream_stats['nrDelivered'], dataonly_downstream_stats['nrPackets'], "?", "?", dataonly_downstream_stats['nrSent'], dataonly_downstream_stats['nrReceived'],
                                                nr_ds_tx_sent_rw1, nr_ds_tx_sent_rw2, nr_ds_tx_received_rw1, nr_ds_tx_received_rw2, nr_ds_tx_not_received,
                                                trace_misc['nrRW1Sent'], trace_misc['nrRW2Sent'], trace_misc['nrRW1Missed'], trace_misc['nrRW2Missed'])
