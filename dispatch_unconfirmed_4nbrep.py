@@ -21,7 +21,7 @@ usConfirmedData = 0
 dsDataGenerate = 0
 verbose = 0
 stdcout = 0
-tracePhyTransmissions = 1
+tracePhyTransmissions = 0
 tracePhyStates = 0
 traceMacPackets = 1
 traceMacStates = 0
@@ -41,7 +41,8 @@ if __name__ == "__main__":
                 totalTime = 100 * usDataPeriod # send 100 packets on average per node
                 nEndDevices = 100*k # Run nRuns for 100*k end devices
                 randomSeed = randomSeedBase + (k-1)*nRuns
-                outputFileNamePrefix = "simulations/output/unconfirmed-4nbrep/LoRaWAN-unconfirmed-4nbrep-{}-{}-{}".format (usDataPeriod, nGateways, nEndDevices) # note: relative to ns-1 root folder
+                # outputFileNamePrefix = "simulations/output/unconfirmed-4nbrep/LoRaWAN-unconfirmed-4nbrep-{}-{}-{}".format (usDataPeriod, nGateways, nEndDevices) # note: relative to ns-1 root folder
+                outputFileNamePrefix = "/users/fvdnabee/LoRaWAN-unconfirmed-4nbrep-{}-{}-{}".format (usDataPeriod, nGateways, nEndDevices) # note: relative to ns-1 root folder
 
                 cli_command = "./waf --run=lorawan-example-tracing --command-template=\"%s --randomSeed={} --nEndDevices={} --nGateways={} --discRadius={} --totalTime={} --nRuns={} --drCalcMethodIndex={} --drCalcPerLimit={} "\
                     "--usPacketSize={} --usDataPeriod={} --usUnconfirmedDataNbRep={} --usConfirmedData={} --dsDataGenerate={} --verbose={} --stdcout={} "\
